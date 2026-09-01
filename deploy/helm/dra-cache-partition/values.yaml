@@ -1,0 +1,41 @@
+nameOverride: ""
+fullnameOverride: ""
+
+driverName: "cache-partition.fabiendupont.io"
+
+driver:
+  image:
+    repository: ghcr.io/fabiendupont/dra-cache-partition
+    pullPolicy: IfNotPresent
+    tag: ""
+  imagePullSecrets: []
+
+  partitionCount: 4
+  resctrlRoot: /sys/fs/resctrl
+  healthPort: 8081
+
+  serviceAccount:
+    create: true
+    annotations: {}
+    name: ""
+
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 256Mi
+
+  nodeSelector:
+    cache-partition.fabiendupont.io/resctrl-cat: "true"
+  tolerations: []
+  affinity: {}
+  podLabels: {}
+  podAnnotations: {}
+
+nfd:
+  enabled: true
+
+topologyRule:
+  enabled: false
