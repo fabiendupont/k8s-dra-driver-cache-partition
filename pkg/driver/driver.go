@@ -1,0 +1,134 @@
+package driver
+
+import (
+	"context"
+	"fmt"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/klog/v2"
+	drav1 "k8s.io/kubelet/pkg/apis/dra/v1"
+)
+
+// Driver implements the DRA kubelet plugin DRAPluginServer interface.
+type Driver struct {
+	drav1.UnimplementedDRAPluginServer
+	driverName string
+	nodeName   string
+	client     kubernetes.Interface
+	state      *AllocationState
+	publisher  *SlicePublisher
+}
+
+// NewDriver creates a new DRA driver instance.
+func NewDriver(driverName, nodeName string, client kubernetes.Interface, state *AllocationState, publisher *SlicePublisher) *Driver {
+	return &Driver{
+		driverName: driverName,
+		nodeName:   nodeName,
+		client:     client,
+		state:      state,
+		publisher:  publisher,
+	}
+}
+
+// NodePrepareResources is called by the kubelet when a pod that references
+// ResourceClaims is about to start. The driver records the allocation and
+// returns CDI device IDs; enforcement happens via CDI hooks at container
+// creation (resctrl group assignment).
+func (d *Driver) NodePrepareResources(ctx context.Context, req *drav1.NodePrepareResourcesRequest) (*drav1.NodePrepareResourcesResponse, error) {
+	resp := &drav1.NodePrepareResourcesResponse{
+		Claims: make(map[string]*drav1.NodePrepareResourceResponse),
+	}
+
+	for _, claim := range req.Claims {
+		claimResp := d.prepareClaim(ctx, claim)
+		resp.Claims[claim.Uid] = claimResp
+	}
+
+	return resp, nil
+}
+
+func (d *Driver) prepareClaim(ctx context.Context, claim *drav1.Claim) *drav1.NodePrepareResourceResponse {
+	rc, err := d.client.ResourceV1().ResourceClaims(claim.Namespace).Get(
+		ctx, claim.Name, metav1.GetOptions{})
+	if err != nil {
+		PrepareTotal.WithLabelValues("error").Inc()
+		return &drav1.NodePrepareResourceResponse{
+			Error: fmt.Sprintf("fetching ResourceClaim %s/%s: %v", claim.Namespace, claim.Name, err),
+		}
+	}
+
+	if rc.Status.Allocation == nil {
+		PrepareTotal.WithLabelValues("error").Inc()
+		return &drav1.NodePrepareResourceResponse{
+			Error: fmt.Sprintf("ResourceClaim %s/%s has no allocation", claim.Namespace, claim.Name),
+		}
+	}
+
+	var devices []*drav1.Device
+	for _, result := range rc.Status.Allocation.Devices.Results {
+		if result.Driver != d.driverName {
+			continue
+		}
+		if result.Pool != d.nodeName {
+			continue
+		}
+		if err := d.state.Allocate(result.Device, claim.Uid); err != nil {
+			klog.ErrorS(err, "Failed to allocate partition",
+				"device", result.Device, "claim", claim.Uid)
+			continue
+		}
+		devices = append(devices, &drav1.Device{
+			RequestNames: []string{result.Request},
+			PoolName:     result.Pool,
+			DeviceName:   result.Device,
+			CdiDeviceIds: []string{CDIDeviceID(result.Device)},
+		})
+	}
+
+	if len(devices) == 0 {
+		PrepareTotal.WithLabelValues("error").Inc()
+		return &drav1.NodePrepareResourceResponse{
+			Error: fmt.Sprintf("no devices for driver %s in claim %s", d.driverName, claim.Uid),
+		}
+	}
+
+	PartitionsAllocated.Set(float64(d.state.AllocatedCount()))
+	PrepareTotal.WithLabelValues("success").Inc()
+
+	klog.InfoS("Prepared claim for cache partitioning",
+		"claim", claim.Uid,
+		"namespace", claim.Namespace,
+		"name", claim.Name,
+		"partitions", len(devices),
+	)
+
+	return &drav1.NodePrepareResourceResponse{Devices: devices}
+}
+
+// NodeUnprepareResources is called when a pod's ResourceClaims are no longer
+// needed. The driver releases the partition allocation. Cache isolation ceases
+// when the container exits (its PID leaves the resctrl group).
+func (d *Driver) NodeUnprepareResources(ctx context.Context, req *drav1.NodeUnprepareResourcesRequest) (*drav1.NodeUnprepareResourcesResponse, error) {
+	resp := &drav1.NodeUnprepareResourcesResponse{
+		Claims: make(map[string]*drav1.NodeUnprepareResourceResponse),
+	}
+
+	for _, claim := range req.Claims {
+		claimResp := d.unprepareClaim(ctx, claim)
+		resp.Claims[claim.Uid] = claimResp
+	}
+
+	return resp, nil
+}
+
+func (d *Driver) unprepareClaim(ctx context.Context, claim *drav1.Claim) *drav1.NodeUnprepareResourceResponse {
+	released := d.state.ReleaseByClaimUID(claim.Uid)
+	PartitionsAllocated.Set(float64(d.state.AllocatedCount()))
+	UnprepareTotal.WithLabelValues("success").Inc()
+
+	klog.InfoS("Unprepared claim, released partitions",
+		"claim", claim.Uid, "partitions", released)
+
+	return &drav1.NodeUnprepareResourceResponse{}
+}

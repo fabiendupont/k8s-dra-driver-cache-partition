@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "dra-cache-partition.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "dra-cache-partition.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "dra-cache-partition.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "dra-cache-partition.selectorLabels" . | nindent 8 }}
+        {{- with .Values.driver.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.driver.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "dra-cache-partition.serviceAccountName" . }}
+      {{- with .Values.driver.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: driver
+          image: {{ include "dra-cache-partition.image" . }}
+          imagePullPolicy: {{ .Values.driver.image.pullPolicy }}
+          args:
+            - --node-name=$(NODE_NAME)
+            - --partition-count={{ .Values.driver.partitionCount }}
+            - --resctrl-root={{ .Values.driver.resctrlRoot }}
+            - --health-port={{ .Values.driver.healthPort }}
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          ports:
+            - name: health
+              containerPort: {{ .Values.driver.healthPort }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          {{- with .Values.driver.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: kubelet-plugins
+              mountPath: /var/lib/kubelet/plugins
+            - name: kubelet-plugins-registry
+              mountPath: /var/lib/kubelet/plugins_registry
+            - name: cdi
+              mountPath: /var/run/cdi
+            - name: resctrl
+              mountPath: {{ .Values.driver.resctrlRoot }}
+      {{- with .Values.driver.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.driver.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.driver.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: kubelet-plugins
+          hostPath:
+            path: /var/lib/kubelet/plugins
+        - name: kubelet-plugins-registry
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry
+        - name: cdi
+          hostPath:
+            path: /var/run/cdi
+            type: DirectoryOrCreate
+        - name: resctrl
+          hostPath:
+            path: {{ .Values.driver.resctrlRoot }}

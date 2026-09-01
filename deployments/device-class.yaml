@@ -1,0 +1,8 @@
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: cache-partition-slices
+spec:
+  selectors:
+    - cel:
+        expression: "device.driver == 'cache-partition.fabiendupont.io'"

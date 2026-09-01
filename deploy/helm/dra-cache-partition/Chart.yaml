@@ -1,0 +1,14 @@
+apiVersion: v2
+name: dra-cache-partition
+description: Deterministic L3 cache partitioning DRA driver for Kubernetes
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">= 1.34.0"
+keywords:
+  - dra
+  - dynamic-resource-allocation
+  - cache
+  - resctrl
+  - intel-rdt
+  - real-time

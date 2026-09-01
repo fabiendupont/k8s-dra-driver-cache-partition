@@ -1,0 +1,14 @@
+apiVersion: nfd.k8s-sigs.io/v1alpha1
+kind: NodeFeatureRule
+metadata:
+  name: resctrl-cat-capable
+spec:
+  rules:
+    - name: resctrl-cat
+      labels:
+        cache-partition.fabiendupont.io/resctrl-cat: "true"
+      matchFeatures:
+        - feature: cpu.cpuid
+          matchExpressions:
+            CAT_L3:
+              op: IsTrue

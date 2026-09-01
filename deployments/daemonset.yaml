@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: dra-cache-partition
+  namespace: dra-cache-partition
+spec:
+  selector:
+    matchLabels:
+      app: dra-cache-partition
+  template:
+    metadata:
+      labels:
+        app: dra-cache-partition
+    spec:
+      serviceAccountName: dra-cache-partition
+      nodeSelector:
+        cache-partition.fabiendupont.io/resctrl-cat: "true"
+      containers:
+        - name: driver
+          image: ghcr.io/fabiendupont/dra-cache-partition:latest
+          args:
+            - --node-name=$(NODE_NAME)
+            - --partition-count=4
+            - --health-port=8081
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          ports:
+            - name: health
+              containerPort: 8081
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 256Mi
+          securityContext:
+            # Privileged is required to write to /sys/fs/resctrl, install
+            # the hook binary, and write CDI specs.
+            privileged: true
+          volumeMounts:
+            - name: kubelet-plugins
+              mountPath: /var/lib/kubelet/plugins
+            - name: kubelet-plugins-registry
+              mountPath: /var/lib/kubelet/plugins_registry
+            - name: cdi
+              mountPath: /var/run/cdi
+            - name: resctrl
+              mountPath: /sys/fs/resctrl
+      volumes:
+        - name: kubelet-plugins
+          hostPath:
+            path: /var/lib/kubelet/plugins
+        - name: kubelet-plugins-registry
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry
+        - name: cdi
+          hostPath:
+            path: /var/run/cdi
+            type: DirectoryOrCreate
+        - name: resctrl
+          hostPath:
+            path: /sys/fs/resctrl
