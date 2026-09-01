@@ -6,7 +6,7 @@ import (
 	"github.com/fabiendupont/k8s-dra-driver-cache-partition/pkg/resctrl"
 )
 
-func PartitionCache(info *resctrl.CATInfo, count int) ([][]*CachePartition, error) {
+func PartitionCache(info *resctrl.CATInfo, count int, cacheToNUMA map[int]int) ([][]*CachePartition, error) {
 	if count <= 0 {
 		return nil, fmt.Errorf("partition count must be positive, got %d", count)
 	}
@@ -30,6 +30,13 @@ func PartitionCache(info *resctrl.CATInfo, count int) ([][]*CachePartition, erro
 			startWay := i * waysPerPartition
 			cbm := buildCBM(startWay, waysPerPartition)
 
+			numaNode := -1
+			if cacheToNUMA != nil {
+				if n, ok := cacheToNUMA[cacheID]; ok {
+					numaNode = n
+				}
+			}
+
 			partitions = append(partitions, &CachePartition{
 				ID:           fmt.Sprintf("cache%d-part%d", cacheID, i),
 				CacheID:      cacheID,
@@ -38,7 +45,7 @@ func PartitionCache(info *resctrl.CATInfo, count int) ([][]*CachePartition, erro
 				TotalWays:    totalWays,
 				CBM:          fmt.Sprintf("%x", cbm),
 				Level:        "L3",
-				NUMANode:     -1,
+				NUMANode:     numaNode,
 				ResctrlGroup: fmt.Sprintf("dra-cache%d-part%d", cacheID, i),
 			})
 		}

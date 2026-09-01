@@ -111,6 +111,7 @@ func discoverCacheIDs() ([]int, error) {
 		return nil, fmt.Errorf("reading root schemata: %w", err)
 	}
 	for _, line := range strings.Split(data, "\n") {
+		line = strings.TrimSpace(line)
 		if !strings.HasPrefix(line, "L3:") {
 			continue
 		}

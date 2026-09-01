@@ -87,7 +87,7 @@ func TestPartitionCache(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			info := testCATInfo(tt.numWays, tt.closids, tt.cacheIDs)
-			perCache, err := PartitionCache(info, tt.count)
+			perCache, err := PartitionCache(info, tt.count, nil)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")
@@ -121,7 +121,7 @@ func TestPartitionCache(t *testing.T) {
 
 func TestPartitionCacheNonOverlapping(t *testing.T) {
 	info := testCATInfo(20, 16, []int{0})
-	perCache, err := PartitionCache(info, 4)
+	perCache, err := PartitionCache(info, 4, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

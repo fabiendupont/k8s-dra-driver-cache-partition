@@ -84,7 +84,12 @@ func main() {
 		"cacheIDs", info.CacheIDs,
 	)
 
-	perCache, err := cache.PartitionCache(info, partitionCount)
+	cacheToNUMA, numaErr := cache.LookupCacheNUMA("", "")
+	if numaErr != nil {
+		klog.InfoS("NUMA lookup unavailable, cache partitions will have numaNode=-1", "error", numaErr)
+	}
+
+	perCache, err := cache.PartitionCache(info, partitionCount, cacheToNUMA)
 	if err != nil {
 		klog.Fatalf("Failed to partition cache: %v", err)
 	}
