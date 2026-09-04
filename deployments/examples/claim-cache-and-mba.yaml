@@ -1,0 +1,47 @@
+# Request both L3 cache isolation and memory bandwidth throttling.
+# Two claims are used so the scheduler can place them on the same node.
+#
+# Both claims resolve to the same resctrl group — the CDI hook writes
+# the container PID to the group's tasks file once per device (idempotent).
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: cache-isolation
+spec:
+  devices:
+    requests:
+      - name: cache
+        exactly:
+          deviceClassName: cache-partition-quarter
+
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: bandwidth-throttle
+spec:
+  devices:
+    requests:
+      - name: mba
+        exactly:
+          deviceClassName: cache-partition-mba
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: latency-sensitive-workload
+spec:
+  containers:
+    - name: app
+      image: myapp:latest
+      resources:
+        claims:
+          - name: cache
+          - name: bandwidth
+  resourceClaims:
+    - name: cache
+      resourceClaimName: cache-isolation
+    - name: bandwidth
+      resourceClaimName: bandwidth-throttle

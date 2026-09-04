@@ -1,0 +1,12 @@
+# Request a quarter of the L3 cache, portable across hardware.
+# Works on any CPU model — selects by fraction, not absolute size.
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: cache-quarter
+spec:
+  devices:
+    requests:
+      - name: cache
+        exactly:
+          deviceClassName: cache-partition-quarter

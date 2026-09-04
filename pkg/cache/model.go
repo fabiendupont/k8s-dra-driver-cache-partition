@@ -32,6 +32,43 @@ type CachePartition struct {
 
 	// ResctrlGroup is the name of the resctrl group for this partition.
 	ResctrlGroup string
+
+	// WaySizeBytes is the size of one cache way in bytes (total / numWays).
+	// Zero when the total cache size is unknown.
+	WaySizeBytes int64
+
+	// MinCBMBits is the minimum number of contiguous cache ways per partition
+	// as reported by the hardware (info/L3/min_cbm_bits).
+	MinCBMBits int
+
+	// MBAThrottle is the memory bandwidth throttle value for this partition.
+	// 0 means MBA is not configured. The unit is determined by MBAMode.
+	MBAThrottle int
+
+	// MBAMode is "percent" when MBAThrottle is a percentage (0-100),
+	// "mbps" when it is in MB/s. Empty when MBA is not configured.
+	MBAMode string
+
+	// CPUList is the kernel compact CPU range string for all CPUs sharing this
+	// cache domain (e.g. "0-11" or "0-3,8-11"). Empty when not available.
+	CPUList string
+
+	// SMBAThrottle is the slow-memory bandwidth throttle value. 0 = not configured.
+	SMBAThrottle int
+
+	// SMBAMode is "percent" or "mbps". Empty when SMBA is not configured.
+	SMBAMode string
+
+	// L2Ways is the number of L2 cache ways registered for this partition's group.
+	// 0 means L2 CAT is not configured.
+	L2Ways int
+
+	// L2TotalWays is the total L2 cache ways available.
+	L2TotalWays int
+
+	// L2CBM is the L2 Cache Bit Mask hex string for this partition.
+	// Empty when L2 CAT is not configured.
+	L2CBM string
 }
 
 // Utilization returns the fraction of the cache assigned to this partition (0.0 to 1.0).

@@ -87,7 +87,7 @@ func TestPartitionCache(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			info := testCATInfo(tt.numWays, tt.closids, tt.cacheIDs)
-			perCache, err := PartitionCache(info, tt.count, nil)
+			perCache, err := PartitionCache(info, SpecsFromCount(tt.count, info.NumWays()), nil, nil, nil)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")
@@ -121,7 +121,7 @@ func TestPartitionCache(t *testing.T) {
 
 func TestPartitionCacheNonOverlapping(t *testing.T) {
 	info := testCATInfo(20, 16, []int{0})
-	perCache, err := PartitionCache(info, 4, nil)
+	perCache, err := PartitionCache(info, SpecsFromCount(4, info.NumWays()), nil, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -164,6 +164,137 @@ func TestFormatSchemata(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("FormatSchemata(%d, %q) = %q, want %q", tt.cacheID, tt.cbm, got, tt.want)
 		}
+	}
+}
+
+func TestPartitionCacheRemainderDistribution(t *testing.T) {
+	// 20 ways / 3 partitions = 6 base + 2 remainder → partitions get 7, 7, 6 ways.
+	info := testCATInfo(20, 16, []int{0})
+	perCache, err := PartitionCache(info, SpecsFromCount(3, info.NumWays()), nil, nil, nil)
+	if err != nil {
+		t.Fatalf("PartitionCache: %v", err)
+	}
+
+	parts := perCache[0]
+	if len(parts) != 3 {
+		t.Fatalf("got %d partitions, want 3", len(parts))
+	}
+	wantWays := []int{7, 7, 6}
+	for i, p := range parts {
+		if p.Ways != wantWays[i] {
+			t.Errorf("partition %d: ways = %d, want %d", i, p.Ways, wantWays[i])
+		}
+	}
+
+	// Verify no ways are wasted: CBM union must cover full mask.
+	var combined uint64
+	for _, p := range parts {
+		cbm, _ := strconv.ParseUint(p.CBM, 16, 64)
+		combined |= cbm
+	}
+	if combined != info.CBMMask {
+		t.Errorf("combined CBM %x does not cover full mask %x (ways wasted)", combined, info.CBMMask)
+	}
+}
+
+func TestPartitionCacheExactDivision(t *testing.T) {
+	// 20 ways / 4 partitions = 5 each, no remainder.
+	info := testCATInfo(20, 16, []int{0})
+	perCache, err := PartitionCache(info, SpecsFromCount(4, info.NumWays()), nil, nil, nil)
+	if err != nil {
+		t.Fatalf("PartitionCache: %v", err)
+	}
+	for _, p := range perCache[0] {
+		if p.Ways != 5 {
+			t.Errorf("partition %s: ways = %d, want 5", p.ID, p.Ways)
+		}
+	}
+}
+
+func TestApplyMBA(t *testing.T) {
+	info := testCATInfo(20, 16, []int{0, 1})
+	perCache, err := PartitionCache(info, SpecsFromCount(4, info.NumWays()), nil, nil, nil)
+	if err != nil {
+		t.Fatalf("PartitionCache: %v", err)
+	}
+
+	ApplyMBA(perCache, 70, "percent")
+
+	for _, parts := range perCache {
+		for _, p := range parts {
+			if p.MBAThrottle != 70 {
+				t.Errorf("partition %s MBAThrottle = %d, want 70", p.ID, p.MBAThrottle)
+			}
+			if p.MBAMode != "percent" {
+				t.Errorf("partition %s MBAMode = %q, want percent", p.ID, p.MBAMode)
+			}
+		}
+	}
+}
+
+func TestApplySMBA(t *testing.T) {
+	info := testCATInfo(20, 16, []int{0})
+	perCache, err := PartitionCache(info, SpecsFromCount(4, info.NumWays()), nil, nil, nil)
+	if err != nil {
+		t.Fatalf("PartitionCache: %v", err)
+	}
+	ApplySMBA(perCache, 50, "percent")
+	for _, parts := range perCache {
+		for _, p := range parts {
+			if p.SMBAThrottle != 50 {
+				t.Errorf("partition %s SMBAThrottle = %d, want 50", p.ID, p.SMBAThrottle)
+			}
+			if p.SMBAMode != "percent" {
+				t.Errorf("partition %s SMBAMode = %q, want percent", p.ID, p.SMBAMode)
+			}
+		}
+	}
+}
+
+func TestSMBADeviceID(t *testing.T) {
+	p := &CachePartition{CacheID: 0, Index: 2}
+	if got := SMBADeviceID(p); got != "smba0-part2" {
+		t.Errorf("SMBADeviceID = %q, want smba0-part2", got)
+	}
+}
+
+func TestFormatCombinedSchemata(t *testing.T) {
+	p := &CachePartition{CacheID: 0, CBM: "1f"}
+	got := FormatCombinedSchemata(p)
+	if got != "L3:0=1f" {
+		t.Errorf("L3 only: got %q, want %q", got, "L3:0=1f")
+	}
+
+	p.MBAThrottle = 50
+	p.MBAMode = "percent"
+	got = FormatCombinedSchemata(p)
+	want := "L3:0=1f\nMB:0=50"
+	if got != want {
+		t.Errorf("L3+MBA: got %q, want %q", got, want)
+	}
+
+	p.SMBAThrottle = 30
+	p.SMBAMode = "percent"
+	got = FormatCombinedSchemata(p)
+	want = "L3:0=1f\nMB:0=50\nSMBA:0=30"
+	if got != want {
+		t.Errorf("L3+MBA+SMBA: got %q, want %q", got, want)
+	}
+
+	p2 := &CachePartition{CacheID: 1, CBM: "3e0", L2CBM: "ff"}
+	got = FormatCombinedSchemata(p2)
+	want = "L3:1=3e0\nL2:1=ff"
+	if got != want {
+		t.Errorf("L3+L2: got %q, want %q", got, want)
+	}
+}
+
+func TestMBADeviceID(t *testing.T) {
+	p := &CachePartition{CacheID: 1, Index: 3}
+	got := MBADeviceID(p)
+	want := "mba1-part3"
+	if got != want {
+		t.Errorf("MBADeviceID = %q, want %q", got, want)
 	}
 }
 

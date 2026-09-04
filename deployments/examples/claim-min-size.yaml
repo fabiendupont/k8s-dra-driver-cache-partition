@@ -1,0 +1,19 @@
+# Request a partition with at least 5 MiB of L3 cache.
+# Adjust the threshold to your workload's working set.
+#
+# To find what sizes are available on a node:
+#   kubectl get resourceslices -o jsonpath='{range .items[*].spec.devices[*]}{.name}{"\t"}{.attributes.cacheSizeLabel}{"\n"}{end}'
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: cache-5mib
+spec:
+  devices:
+    requests:
+      - name: cache
+        exactly:
+          deviceClassName: cache-partition-any
+          selectors:
+            - cel:
+                expression: >
+                  device.attributes['cache-partition.fabiendupont.io'].cacheSizeBytes >= 5242880

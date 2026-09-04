@@ -11,8 +11,17 @@ driver:
   imagePullSecrets: []
 
   partitionCount: 4
+  # partitionSizes: heterogeneous partition sizes as "ways:count[,...]". Overrides partitionCount when set.
+  # Example: "2:4,4:2" gives four 2-way and two 4-way partitions.
+  partitionSizes: ""
   resctrlRoot: /sys/fs/resctrl
   healthPort: 8081
+  # mbaBandwidth: per-partition MBA bandwidth cap. 0 = auto (100 in percent mode, skip in MBps mode).
+  mbaBandwidth: 0
+  # smbaBandwidth: per-partition slow-memory bandwidth cap (HBM systems). 0 = auto.
+  smbaBandwidth: 0
+  # monitorInterval: CMT/MBM scrape interval for Prometheus metrics.
+  monitorInterval: 10s
 
   serviceAccount:
     create: true

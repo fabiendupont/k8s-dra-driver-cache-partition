@@ -7,12 +7,17 @@ spec:
   selector:
     matchLabels:
       app: dra-cache-partition
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
   template:
     metadata:
       labels:
         app: dra-cache-partition
     spec:
       serviceAccountName: dra-cache-partition
+      terminationGracePeriodSeconds: 60
       nodeSelector:
         cache-partition.fabiendupont.io/resctrl-cat: "true"
       containers:
@@ -22,6 +27,10 @@ spec:
             - --node-name=$(NODE_NAME)
             - --partition-count=4
             - --health-port=8081
+            # --partition-sizes=2:4,4:2  # heterogeneous sizes (ways:count,...); omit to use --partition-count
+            # --mba-bandwidth=70   # MBA throttle (percent or MBps); auto-detected mode
+            # --smba-bandwidth=50  # Slow-memory bandwidth throttle (HBM systems only)
+            # --monitor-interval=10s  # CMT/MBM scrape interval
           env:
             - name: NODE_NAME
               valueFrom:
@@ -51,9 +60,12 @@ spec:
               cpu: 100m
               memory: 256Mi
           securityContext:
-            # Privileged is required to write to /sys/fs/resctrl, install
-            # the hook binary, and write CDI specs.
-            privileged: true
+            capabilities:
+              add: ["SYS_ADMIN"]
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
           volumeMounts:
             - name: kubelet-plugins
               mountPath: /var/lib/kubelet/plugins

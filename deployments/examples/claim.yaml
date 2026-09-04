@@ -1,3 +1,10 @@
+# Basic cache partition claim — any L3 partition on the node.
+# For size-based selection see claim-quarter-cache.yaml and claim-min-size.yaml.
+#
+# Discover what partition sizes are available on a node:
+#   kubectl get resourceslices -o json | \
+#     jq -r '.items[].spec.devices[] | select(.attributes.cacheLevel.string == "L3") |
+#             "\(.name)\t\(.attributes.cacheSizeLabel.string // "unknown")"'
 apiVersion: resource.k8s.io/v1
 kind: ResourceClaim
 metadata:
@@ -7,7 +14,4 @@ spec:
     requests:
       - name: cache
         exactly:
-          deviceClassName: cache-partition-slices
-          selectors:
-            - cel:
-                expression: "device.attributes['cache-partition.fabiendupont.io'].cacheLevel == 'L3'"
+          deviceClassName: cache-partition-any

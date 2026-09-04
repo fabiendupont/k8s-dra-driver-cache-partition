@@ -1,0 +1,113 @@
+# Named cache partition tiers for cluster administrators.
+#
+# Users reference these DeviceClasses by name in their ResourceClaims.
+# The CEL selectors encode the hardware math so users never have to.
+#
+# Apply once per cluster:
+#   kubectl apply -f deployments/device-classes-sized.yaml
+#
+# Usage in a ResourceClaim:
+#   deviceClassName: cache-partition-large
+#
+# Note: absolute size classes (cache-partition-5mib etc.) are examples.
+# The actual partition size depends on the node's hardware. Use fraction-
+# based classes (cache-partition-quarter etc.) for portability across
+# different CPU models.
+
+---
+# Any cache partition — useful for process isolation regardless of size.
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: cache-partition-any
+spec:
+  selectors:
+    - cel:
+        expression: >
+          device.driver == 'cache-partition.fabiendupont.io' &&
+          device.attributes['cache-partition.fabiendupont.io'].cacheLevel == 'L3'
+
+---
+# At least a quarter of the L3 cache (≥ 25% of total ways).
+# Portable across hardware — selects by fraction, not absolute size.
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: cache-partition-quarter
+spec:
+  selectors:
+    - cel:
+        expression: >
+          device.driver == 'cache-partition.fabiendupont.io' &&
+          device.attributes['cache-partition.fabiendupont.io'].cacheWays * 4 >=
+          device.attributes['cache-partition.fabiendupont.io'].cacheTotalWays
+
+---
+# At least a third of the L3 cache (≥ 33% of total ways).
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: cache-partition-third
+spec:
+  selectors:
+    - cel:
+        expression: >
+          device.driver == 'cache-partition.fabiendupont.io' &&
+          device.attributes['cache-partition.fabiendupont.io'].cacheWays * 3 >=
+          device.attributes['cache-partition.fabiendupont.io'].cacheTotalWays
+
+---
+# At least half the L3 cache (≥ 50% of total ways).
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: cache-partition-half
+spec:
+  selectors:
+    - cel:
+        expression: >
+          device.driver == 'cache-partition.fabiendupont.io' &&
+          device.attributes['cache-partition.fabiendupont.io'].cacheWays * 2 >=
+          device.attributes['cache-partition.fabiendupont.io'].cacheTotalWays
+
+---
+# At least 4 MiB of cache. Works on any CPU where partition sizes align.
+# Adjust the threshold to match your hardware's way granularity.
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: cache-partition-4mib
+spec:
+  selectors:
+    - cel:
+        expression: >
+          device.driver == 'cache-partition.fabiendupont.io' &&
+          device.attributes['cache-partition.fabiendupont.io'].cacheSizeBytes >= 4194304
+
+---
+# At least 8 MiB of cache.
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: cache-partition-8mib
+spec:
+  selectors:
+    - cel:
+        expression: >
+          device.driver == 'cache-partition.fabiendupont.io' &&
+          device.attributes['cache-partition.fabiendupont.io'].cacheSizeBytes >= 8388608
+
+---
+# MBA bandwidth throttle — a partition with MBA configured.
+# Complements cache-partition-* classes for workloads needing
+# both cache isolation and bandwidth control.
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: cache-partition-mba
+spec:
+  selectors:
+    - cel:
+        expression: >
+          device.driver == 'cache-partition.fabiendupont.io' &&
+          has(device.attributes['cache-partition.fabiendupont.io'].mbaBandwidth)

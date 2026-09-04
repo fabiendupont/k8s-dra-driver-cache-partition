@@ -9,6 +9,10 @@ spec:
   selector:
     matchLabels:
       {{- include "dra-cache-partition.selectorLabels" . | nindent 6 }}
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
   template:
     metadata:
       labels:
@@ -22,6 +26,7 @@ spec:
       {{- end }}
     spec:
       serviceAccountName: {{ include "dra-cache-partition.serviceAccountName" . }}
+      terminationGracePeriodSeconds: 60
       {{- with .Values.driver.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -32,9 +37,20 @@ spec:
           imagePullPolicy: {{ .Values.driver.image.pullPolicy }}
           args:
             - --node-name=$(NODE_NAME)
+            {{- if .Values.driver.partitionSizes }}
+            - --partition-sizes={{ .Values.driver.partitionSizes }}
+            {{- else }}
             - --partition-count={{ .Values.driver.partitionCount }}
+            {{- end }}
             - --resctrl-root={{ .Values.driver.resctrlRoot }}
             - --health-port={{ .Values.driver.healthPort }}
+            {{- if gt (int .Values.driver.mbaBandwidth) 0 }}
+            - --mba-bandwidth={{ .Values.driver.mbaBandwidth }}
+            {{- end }}
+            {{- if gt (int .Values.driver.smbaBandwidth) 0 }}
+            - --smba-bandwidth={{ .Values.driver.smbaBandwidth }}
+            {{- end }}
+            - --monitor-interval={{ .Values.driver.monitorInterval }}
           env:
             - name: NODE_NAME
               valueFrom:
@@ -61,7 +77,12 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           securityContext:
-            privileged: true
+            capabilities:
+              add: ["SYS_ADMIN"]
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
           volumeMounts:
             - name: kubelet-plugins
               mountPath: /var/lib/kubelet/plugins
